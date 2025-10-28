@@ -1,0 +1,184 @@
+"""
+Automated Monthly Revenue Mapping and Update
+--------------------------------------------
+
+Purpose:
+    1. Open the monthly revenue source Excel file and filter rows from the previous month where column G = "MP".
+    2. Copy those rows into the main "Revenue Map" Excel file under the "Receitas" sheet.
+    3. Apply existing formatting and replicate formulas in specific columns (A:D, K).
+    4. Automatically map values in column V to categories in column E.
+
+Frequency: Monthly
+Manual time previously: ~30 minutes per run
+Automated time: ~3 minutes per run
+Estimated yearly time saved: ≈5 hours and 24 minutes
+
+Author: Maria Simões
+Last Updated: 2025-10-16
+"""
+
+import xlwings as xw
+from datetime import datetime
+import os
+
+user = os.getlogin()
+
+# ---------------------------------------------------------------------------
+# STEP 1 - FILE PATHS AND DATE SETUP
+# ---------------------------------------------------------------------------
+
+# Define anonymized paths
+file_path_source = fr""
+file_path_target = fr""
+
+# Define previous month and year
+today = datetime.today()
+if today.month == 1:
+    target_month = 12
+    target_year = today.year - 1
+else:
+    target_month = today.month - 1
+    target_year = today.year
+
+# ---------------------------------------------------------------------------
+# STEP 2 - CHECK AND CLOSE OPEN FILES
+# ---------------------------------------------------------------------------
+
+def check_file_open(file_path):
+    """Check if a workbook is already open."""
+    try:
+        app = xw.apps.active
+        for wb in app.books:
+            if wb.fullname.lower() == file_path.lower():
+                return wb
+    except Exception:
+        return None
+    return None
+
+def close_if_open():
+    """Close the source and target files if open."""
+    for path in [file_path_source, file_path_target]:
+        wb = check_file_open(path)
+        if wb:
+            wb.save()
+            wb.close()
+            print(f"⚠️ File was open and has been closed: {path}")
+
+close_if_open()
+
+# ---------------------------------------------------------------------------
+# STEP 3 - FILTER DATA FROM SOURCE
+# ---------------------------------------------------------------------------
+
+with xw.App(visible=False) as app:
+    wb_source = app.books.open(file_path_source)
+    ws_source = wb_source.sheets["data"]
+
+    last_row = ws_source.range("G" + str(ws_source.cells.last_cell.row)).end("up").row
+    filtered_rows = []
+
+    for i in range(2, last_row + 1):
+        type_value = ws_source.range(f"G{i}").value
+        date_value = ws_source.range(f"AC{i}").value
+
+        if (
+            type_value == "MP"
+            and isinstance(date_value, datetime)
+            and date_value.month == target_month
+            and date_value.year == target_year
+        ):
+            row_data = ws_source.range(f"A{i}:ZZ{i}").value
+            filtered_rows.append(row_data)
+
+    wb_source.close()
+
+# ---------------------------------------------------------------------------
+# STEP 4 - PASTE FILTERED DATA INTO DESTINATION
+# ---------------------------------------------------------------------------
+
+    if not filtered_rows:
+        print("ℹ️ No matching rows found for the previous month.")
+    else:
+        wb_target = app.books.open(file_path_target)
+        ws_target = wb_target.sheets["Receitas"]
+
+        # Find next empty row
+        last_row_target = ws_target.range("L" + str(ws_target.cells.last_cell.row)).end("up").row
+        start_row = last_row_target + 1
+
+        # Paste filtered data
+        for idx, row in enumerate(filtered_rows):
+            ws_target.range(f"L{start_row + idx}:ZZ{start_row + idx}").value = row
+
+        # Copy formatting from last existing row
+        last_format_row = ws_target.range(f"A{last_row_target}").expand("right")
+        new_range = ws_target.range(f"A{start_row}:ZZ{start_row + len(filtered_rows) - 1}")
+        last_format_row.api.Copy()
+        new_range.api.PasteSpecial(Paste=-4122)  # PasteFormats
+        app.api.CutCopyMode = False
+
+# ---------------------------------------------------------------------------
+# STEP 5 - MAP COLUMN V VALUES TO COLUMN E CATEGORIES
+# ---------------------------------------------------------------------------
+
+        category_map = {
+            "PENAL": "Service Levels",
+            "TOPOS": "Investment Ratio",
+            "CPROM": "Non-Discount Financing",
+            "LABOR": "Laboratory Analyses"
+        }
+
+        for i in range(len(filtered_rows)):
+            col_v_value = ws_target.range(f"V{start_row + i}").value
+            mapped_value = category_map.get(col_v_value)
+            if mapped_value:
+                ws_target.range(f"E{start_row + i}").value = mapped_value
+
+# ---------------------------------------------------------------------------
+# STEP 6 - REPLICATE FORMULAS (A:D, K)
+# ---------------------------------------------------------------------------
+
+        def col_letter(col_num):
+            """Convert column number to Excel letter."""
+            result = ""
+            while col_num > 0:
+                col_num, remainder = divmod(col_num - 1, 26)
+                result = chr(65 + remainder) + result
+            return result
+
+        num_new_rows = len(filtered_rows)
+        if num_new_rows > 0:
+            print(f"📈 Replicating formulas for {num_new_rows} new rows...")
+
+            last_formula_row = last_row_target
+            new_rows_start = start_row
+            new_rows_end = start_row + num_new_rows - 1
+            formula_ranges = ["A:D", "K:K"]
+
+            for rng in formula_ranges:
+                try:
+                    col_start, col_end = rng.split(":")
+                    start_idx = ws_target.range(f"{col_start}{last_formula_row}").column
+                    end_idx = ws_target.range(f"{col_end}{last_formula_row}").column
+
+                    for col_idx in range(start_idx, end_idx + 1):
+                        col_letter_str = col_letter(col_idx)
+                        formula = ws_target.range(f"{col_letter_str}{last_formula_row}").formula
+                        if formula:
+                            ws_target.range(f"{col_letter_str}{new_rows_start}:{col_letter_str}{new_rows_end}").formula = formula
+                            print(f"↳ Formula copied in column {col_letter_str}")
+                except Exception as e:
+                    print(f"⚠️ Error replicating formulas in range {rng}: {e}")
+
+            print("✅ Formula replication complete.\n")
+        else:
+            print("ℹ️ No new rows to copy formulas.\n")
+
+# ---------------------------------------------------------------------------
+# STEP 7 - SAVE AND CLOSE
+# ---------------------------------------------------------------------------
+
+        wb_target.save()
+        wb_target.close()
+
+        print(f"✅ {len(filtered_rows)} rows copied successfully. File saved.")
