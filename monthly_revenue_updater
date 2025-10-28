@@ -3,7 +3,7 @@ Automated Monthly Revenue Mapping and Update
 --------------------------------------------
 
 Purpose:
-    1. Open the monthly revenue source Excel file and filter rows from the previous month where column G = "MP".
+    1. Open the monthly revenue source Excel file and filter rows from the previous month where column G = "".
     2. Copy those rows into the main "Revenue Map" Excel file under the "Receitas" sheet.
     3. Apply existing formatting and replicate formulas in specific columns (A:D, K).
     4. Automatically map values in column V to categories in column E.
@@ -13,7 +13,7 @@ Manual time previously: ~30 minutes per run
 Automated time: ~3 minutes per run
 Estimated yearly time saved: ≈5 hours and 24 minutes
 
-Author: Maria Simões
+Author: Maria Simões Figueiredo
 Last Updated: 2025-10-16
 """
 
@@ -100,7 +100,7 @@ with xw.App(visible=False) as app:
         print("ℹ️ No matching rows found for the previous month.")
     else:
         wb_target = app.books.open(file_path_target)
-        ws_target = wb_target.sheets["Receitas"]
+        ws_target = wb_target.sheets["XXX"]
 
         # Find next empty row
         last_row_target = ws_target.range("L" + str(ws_target.cells.last_cell.row)).end("up").row
@@ -121,11 +121,7 @@ with xw.App(visible=False) as app:
 # STEP 5 - MAP COLUMN V VALUES TO COLUMN E CATEGORIES
 # ---------------------------------------------------------------------------
 
-        category_map = {
-            "PENAL": "Service Levels",
-            "TOPOS": "Investment Ratio",
-            "CPROM": "Non-Discount Financing",
-            "LABOR": "Laboratory Analyses"
+        category_map = { "CODE"
         }
 
         for i in range(len(filtered_rows)):
